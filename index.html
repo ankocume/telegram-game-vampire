@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Vampire Survivor TMA</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: #08090c;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #fff;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      height: 100vh;
+      background: #11131a;
+      overflow: hidden;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    /* Полоса опыта и верхний HUD */
+    #xp-bar-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 8px;
+      background: #1e2230;
+      z-index: 5;
+    }
+    #xp-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+      transition: width 0.15s ease-out;
+    }
+    #hud {
+      position: absolute;
+      top: 16px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      font-size: 13px;
+      font-weight: 700;
+      z-index: 5;
+    }
+    .hud-badge {
+      background: rgba(0, 0, 0, 0.65);
+      padding: 6px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(4px);
+    }
+
+    /* Модальные окна */
+    .modal {
+      position: absolute;
+      inset: 0;
+      background: rgba(9, 10, 15, 0.95);
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+      z-index: 25;
+    }
+    .hidden { display: none !important; }
+
+    h1 { font-size: 32px; font-weight: 900; margin-bottom: 4px; color: #ff4757; text-shadow: 0 0 16px rgba(255,71,87,0.4); }
+    h2 { font-size: 22px; margin-bottom: 6px; }
+    p { font-size: 13px; color: #8e95ad; margin-bottom: 16px; }
+
+    .btn {
+      width: 100%;
+      max-width: 270px;
+      background: #ff4757;
+      color: #fff;
+      border: none;
+      padding: 13px 18px;
+      margin: 5px 0;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(255,71,87,0.3);
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-secondary { background: #1c202e; color: #cbd5e1; border: 1px solid #2d3448; box-shadow: none; }
+    .btn-stars {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      font-weight: 800;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+    }
+
+    /* Меню-кнопки */
+    .menu-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 270px;
+      margin-top: 4px;
+    }
+    .menu-row .btn { flex: 1; padding: 12px 6px; font-size: 13px; }
+
+    /* Карточки улучшения навыков */
+    .cards-box {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      max-width: 300px;
+    }
+    .card-item {
+      background: #181b26;
+      border: 2px solid #282f42;
+      border-radius: 14px;
+      padding: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .card-item:active { border-color: #00d2ff; background: #1f2433; }
+    .card-title { font-size: 14px; font-weight: 700; color: #38bdf8; margin-bottom: 2px; }
+    .card-desc { font-size: 12px; color: #cbd5e1; }
+
+    /* Таблица рекордов */
+    .leader-box {
+      width: 100%;
+      max-width: 300px;
+      background: #161824;
+      border-radius: 14px;
+      padding: 10px 14px;
+      max-height: 240px;
+      overflow-y: auto;
+      margin-bottom: 16px;
+      border: 1px solid #282c3c;
+    }
+    .leader-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #222634;
+      font-size: 13px;
+    }
+    .leader-row:last-child { border-bottom: none; }
+    .leader-row.me { color: #00e5ff; font-weight: 700; }
+
+    /* Виртуальный джойстик */
+    #joystick-base {
+      position: absolute;
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      pointer-events: none;
+      display: none;
+      z-index: 10;
+      transform: translate(-50%, -50%);
+    }
+    #joystick-stick {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(255, 71, 87, 0.8);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-container">
+  <div id="xp-bar-container"><div id="xp-bar"></div></div>
+
+  <div id="hud">
+    <div class="hud-badge" id="hud-level">Ур. 1</div>
+    <div class="hud-badge" id="hud-time">00:00</div>
+    <div class="hud-badge" id="hud-gold">🪙 0</div>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <div id="joystick-base"><div id="joystick-stick"></div></div>
+
+  <!-- Главное меню -->
+  <div id="modal-menu" class="modal">
+    <h1>SURVIVORS</h1>
+    <p id="menu-stats">Рекорд: 00:00 | Золото: 0 🪙</p>
+    <button class="btn" onclick="startGame()">⚔️ В БОЙ</button>
+    <div class="menu-row">
+      <button class="btn btn-secondary" onclick="openLeaderboard()">🏆 Рекорды</button>
+      <button class="btn btn-stars" onclick="openStarsShop()">⭐ Stars</button>
+    </div>
+  </div>
+
+  <!-- Окно Level Up -->
+  <div id="modal-lvlup" class="modal hidden">
+    <h2 style="color:#00d2ff;">НОВЫЙ УРОВЕНЬ</h2>
+    <p>Выберите способность</p>
+    <div class="cards-box" id="lvlup-cards"></div>
+  </div>
+
+  <!-- Поражение -->
+  <div id="modal-gameover" class="modal hidden">
+    <h1>ВЫ ПАЛИ</h1>
+    <p id="gameover-stats">Время: 00:00 | Убийств: 0</p>
+    <button class="btn btn-stars" onclick="buyReviveWithStars()">⭐ Воскреснуть за 15 Stars</button>
+    <button class="btn" onclick="startGame()">Заново</button>
+    <button class="btn btn-secondary" onclick="openMenu()">В меню</button>
+  </div>
+
+  <!-- Топ игроков -->
+  <div id="modal-leaders" class="modal hidden">
+    <h2>Мировой Топ</h2>
+    <p id="db-status">Загрузка данных...</p>
+    <div class="leader-box" id="leader-items"></div>
+    <button class="btn btn-secondary" onclick="openMenu()">Назад</button>
+  </div>
+
+  <!-- Магазин Telegram Stars -->
+  <div id="modal-stars" class="modal hidden">
+    <h2>Звёздный Магазин</h2>
+    <p>Мгновенные бонусы за Telegram Stars</p>
+    <button class="btn btn-stars" onclick="buyProductStars('gold_500', 25)">⭐ 500 🪙 — 25 Stars</button>
+    <button class="btn btn-stars" onclick="buyProductStars('gold_2000', 80)">⭐ 2000 🪙 — 80 Stars</button>
+    <button class="btn btn-stars" onclick="buyProductStars('vip_pass', 150)">⭐ Бессмертие (VIP) — 150 Stars</button>
+    <button class="btn btn-secondary" onclick="openMenu()" style="margin-top:10px;">Назад</button>
+  </div>
+</div>
+
+<script>
+  // Адрес вашей новой базы Firebase
+  const DB_BASE_URL = "https://gametg-vampire-default-rtdb.europe-west1.firebasedatabase.app";
+
+  const tg = window.Telegram?.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+  }
+
+  const tgUser = {
+    id: tg?.initDataUnsafe?.user?.id?.toString() || localStorage.getItem('surv_guest_id') || 'u_' + Math.random().toString(36).substring(2, 9),
+    name: tg?.initDataUnsafe?.user?.first_name || 'Выживший'
+  };
+  localStorage.setItem('surv_guest_id', tgUser.id);
+
+  // Локальные данные
+  let gold = parseInt(localStorage.getItem('surv_gold') || '0', 10);
+  let bestTime = parseInt(localStorage.getItem('surv_best_time') || '0', 10);
+  let isVip = localStorage.getItem('surv_vip') === 'true';
+
+  // Сохранение в базу данных
+  async function syncProfile() {
+    localStorage.setItem('surv_gold', gold.toString());
+    localStorage.setItem('surv_best_time', bestTime.toString());
+    localStorage.setItem('surv_vip', isVip ? 'true' : 'false');
+
+    try {
+      await fetch(`${DB_BASE_URL}/users/${tgUser.id}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: tgUser.name,
+          bestTime: bestTime,
+          gold: gold,
+          isVip: isVip,
+          updatedAt: Date.now()
+        })
+      });
+    } catch (e) {
+      console.error("Ошибка синхронизации с базой:", e);
+    }
+  }
+
+  // Загрузка начальных данных из базы
+  async function loadRemoteProfile() {
+    try {
+      const res = await fetch(`${DB_BASE_URL}/users/${tgUser.id}.json`);
+      const data = await res.json();
+      if (data) {
+        if (data.gold !== undefined) gold = Math.max(gold, data.gold);
+        if (data.bestTime !== undefined) bestTime = Math.max(bestTime, data.bestTime);
+        if (data.isVip) isVip = true;
+        saveLocal();
+        updateMenuStats();
+      }
+    } catch (e) {
+      console.error("Ошибка загрузки профиля:", e);
+    }
+  }
+  loadRemoteProfile();
+
+  function saveLocal() {
+    localStorage.setItem('surv_gold', gold.toString());
+    localStorage.setItem('surv_best_time', bestTime.toString());
+    localStorage.setItem('surv_vip', isVip ? 'true' : 'false');
+  }
+
+  // --- ДВИЖОК SURVIVOR ---
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  let width = Math.min(window.innerWidth, 440);
+  let height = window.innerHeight;
+  canvas.width = width;
+  canvas.height = height;
+
+  const player = {
+    x: width / 2,
+    y: height / 2,
+    r: 14,
+    speed: 2.8,
+    hp: 100,
+    maxHp: 100,
+    level: 1,
+    xp: 0,
+    nextXp: 8,
+    dmg: 25,
+    attackSpeed: 45,
+    bulletSpeed: 7.2,
+    fireTimer: 0,
+    kills: 0
+  };
+
+  let isPlaying = false;
+  let gameTime = 0;
+  let enemies = [];
+  let bullets = [];
+  let gems = [];
+  let spawnTimer = 0;
+
+  // Джойстик
+  let touchId = null;
+  let joyStart = { x: 0, y: 0 };
+  let joyMove = { x: 0, y: 0 };
+  const joyBase = document.getElementById('joystick-base');
+  const joyStick = document.getElementById('joystick-stick');
+
+  window.addEventListener('touchstart', (e) => {
+    if (!isPlaying || touchId !== null) return;
+    const t = e.changedTouches[0];
+    touchId = t.identifier;
+    joyStart = { x: t.clientX, y: t.clientY };
+    joyMove = { x: 0, y: 0 };
+
+    joyBase.style.left = joyStart.x + 'px';
+    joyBase.style.top = joyStart.y + 'px';
+    joyStick.style.left = '50%';
+    joyStick.style.top = '50%';
+    joyBase.style.display = 'block';
+  });
+
+  window.addEventListener('touchmove', (e) => {
+    if (!isPlaying) return;
+    for (let t of e.changedTouches) {
+      if (t.identifier === touchId) {
+        const dx = t.clientX - joyStart.x;
+        const dy = t.clientY - joyStart.y;
+        const dist = Math.hypot(dx, dy);
+        const maxDist = 45;
+
+        if (dist > maxDist) {
+          joyMove.x = (dx / dist) * maxDist;
+          joyMove.y = (dy / dist) * maxDist;
+        } else {
+          joyMove.x = dx;
+          joyMove.y = dy;
+        }
+
+        joyStick.style.left = `calc(50% + ${joyMove.x}px)`;
+        joyStick.style.top = `calc(50% + ${joyMove.y}px)`;
+      }
+    }
+  });
+
+  const stopJoy = (e) => {
+    for (let t of e.changedTouches) {
+      if (t.identifier === touchId) {
+        touchId = null;
+        joyMove = { x: 0, y: 0 };
+        joyBase.style.display = 'none';
+      }
+    }
+  };
+  window.addEventListener('touchend', stopJoy);
+  window.addEventListener('touchcancel', stopJoy);
+
+  function startGame() {
+    closeModals();
+    player.x = width / 2;
+    player.y = height / 2;
+    player.hp = isVip ? 9999 : 100;
+    player.maxHp = isVip ? 9999 : 100;
+    player.level = 1;
+    player.xp = 0;
+    player.nextXp = 8;
+    player.dmg = 25;
+    player.attackSpeed = 45;
+    player.speed = 2.8;
+    player.kills = 0;
+
+    enemies = [];
+    bullets = [];
+    gems = [];
+    gameTime = 0;
+    spawnTimer = 0;
+
+    isPlaying = true;
+    updateHUD();
+  }
+
+  function update() {
+    if (!isPlaying) return;
+    gameTime++;
+
+    // 1. Движение
+    const len = Math.hypot(joyMove.x, joyMove.y);
+    if (len > 5) {
+      player.x += (joyMove.x / len) * player.speed;
+      player.y += (joyMove.y / len) * player.speed;
+      player.x = Math.max(player.r, Math.min(width - player.r, player.x));
+      player.y = Math.max(player.r, Math.min(height - player.r, player.y));
+    }
+
+    // 2. Авто-стрельба
+    player.fireTimer++;
+    if (player.fireTimer >= player.attackSpeed && enemies.length > 0) {
+      player.fireTimer = 0;
+      let target = null;
+      let minDist = 9999;
+      for (let en of enemies) {
+        const d = Math.hypot(en.x - player.x, en.y - player.y);
+        if (d < minDist) {
+          minDist = d;
+          target = en;
+        }
+      }
+      if (target) {
+        const angle = Math.atan2(target.y - player.y, target.x - player.x);
+        bullets.push({
+          x: player.x,
+          y: player.y,
+          vx: Math.cos(angle) * player.bulletSpeed,
+          vy: Math.sin(angle) * player.bulletSpeed,
+          dmg: player.dmg
+        });
+      }
+    }
+
+    // 3. Пули
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      b.x += b.vx;
+      b.y += b.vy;
+
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const en = enemies[j];
+        if (Math.hypot(en.x - b.x, en.y - b.y) < en.r + 4) {
+          en.hp -= b.dmg;
+          bullets.splice(i, 1);
+          if (en.hp <= 0) {
+            gems.push({ x: en.x, y: en.y, val: 1 });
+            player.kills++;
+            if (Math.random() < 0.25) gold++;
+            enemies.splice(j, 1);
+          }
+          break;
+        }
+      }
+
+      if (b && (b.x < 0 || b.x > width || b.y < 0 || b.y > height)) {
+        bullets.splice(i, 1);
+      }
+    }
+
+    // 4. Спавн врагов
+    spawnTimer++;
+    if (spawnTimer >= Math.max(18, 55 - Math.floor(gameTime / 300))) {
+      spawnTimer = 0;
+      const side = Math.floor(Math.random() * 4);
+      let sx, sy;
+      if (side === 0) { sx = Math.random() * width; sy = -15; }
+      else if (side === 1) { sx = width + 15; sy = Math.random() * height; }
+      else if (side === 2) { sx = Math.random() * width; sy = height + 15; }
+      else { sx = -15; sy = Math.random() * height; }
+
+      enemies.push({
+        x: sx,
+        y: sy,
+        r: 11,
+        speed: 1.3 + Math.random() * 0.8,
+        hp: 30 + Math.floor(gameTime / 350) * 12
+      });
+    }
+
+    // 5. Движение врагов и урон
+    for (let en of enemies) {
+      const angle = Math.atan2(player.y - en.y, player.x - en.x);
+      en.x += Math.cos(angle) * en.speed;
+      en.y += Math.sin(angle) * en.speed;
+
+      if (Math.hypot(player.x - en.x, player.y - en.y) < player.r + en.r) {
+        player.hp -= 0.65;
+        if (player.hp <= 0) {
+          gameOver();
+          return;
+        }
+      }
+    }
+
+    // 6. Кристаллы XP
+    for (let i = gems.length - 1; i >= 0; i--) {
+      const g = gems[i];
+      const d = Math.hypot(player.x - g.x, player.y - g.y);
+      if (d < 70) {
+        g.x += (player.x - g.x) * 0.16;
+        g.y += (player.y - g.y) * 0.16;
+      }
+      if (d < player.r + 6) {
+        player.xp += g.val;
+        gems.splice(i, 1);
+        if (player.xp >= player.nextXp) {
+          triggerLevelUp();
+        }
+        updateHUD();
+      }
+    }
+
+    if (gameTime % 60 === 0) updateHUD();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+
+    // Фоновая сетка
+    ctx.strokeStyle = '#181b24';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < width; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+    }
+    for (let y = 0; y < height; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+    }
+
+    // Кристаллы XP
+    ctx.fillStyle = '#00f2fe';
+    for (let g of gems) {
+      ctx.beginPath(); ctx.arc(g.x, g.y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Враги
+    ctx.fillStyle = '#ff4757';
+    for (let en of enemies) {
+      ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Пули
+    ctx.fillStyle = '#facc15';
+    for (let b of bullets) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Игрок
+    ctx.fillStyle = isVip ? '#ffd700' : '#38bdf8';
+    ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2); ctx.fill();
+
+    // HP-бар
+    ctx.fillStyle = '#2d3748';
+    ctx.fillRect(player.x - 16, player.y - player.r - 8, 32, 4);
+    ctx.fillStyle = '#22c55e';
+    const hpW = Math.max(0, (player.hp / player.maxHp) * 32);
+    ctx.fillRect(player.x - 16, player.y - player.r - 8, hpW, 4);
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function updateHUD() {
+    const sec = Math.floor(gameTime / 60);
+    const m = String(Math.floor(sec / 60)).padStart(2, '0');
+    const s = String(sec % 60).padStart(2, '0');
+    document.getElementById('hud-time').innerText = `${m}:${s}`;
+    document.getElementById('hud-level').innerText = `Ур. ${player.level}`;
+    document.getElementById('hud-gold').innerText = `🪙 ${gold}`;
+    const xpPercent = Math.min(100, (player.xp / player.nextXp) * 100);
+    document.getElementById('xp-bar').style.width = xpPercent + '%';
+  }
+
+  // --- ВЫБОР УЛУЧШЕНИЙ ---
+  const UPGRADES = [
+    { title: 'Огненный шар', desc: '+35% к урону пуль', apply: () => player.dmg = Math.round(player.dmg * 1.35) },
+    { title: 'Скорострел', desc: '+25% к частоте стрельбы', apply: () => player.attackSpeed = Math.max(12, Math.round(player.attackSpeed * 0.75)) },
+    { title: 'Легкие ботинки', desc: '+15% к скорости движения', apply: () => player.speed += 0.4 },
+    { title: 'Аптечка', desc: 'Восстанавливает 50% HP', apply: () => player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.5) }
+  ];
+
+  function triggerLevelUp() {
+    isPlaying = false;
+    player.level++;
+    player.xp = 0;
+    player.nextXp = Math.floor(player.nextXp * 1.5);
+
+    const container = document.getElementById('lvlup-cards');
+    container.innerHTML = '';
+
+    const pool = [...UPGRADES].sort(() => 0.5 - Math.random()).slice(0, 3);
+    pool.forEach(upg => {
+      const el = document.createElement('div');
+      el.className = 'card-item';
+      el.innerHTML = `<div class="card-title">${upg.title}</div><div class="card-desc">${upg.desc}</div>`;
+      el.onclick = () => {
+        upg.apply();
+        closeModals();
+        isPlaying = true;
+      };
+      container.appendChild(el);
+    });
+
+    document.getElementById('modal-lvlup').classList.remove('hidden');
+  }
+
+  function gameOver() {
+    isPlaying = false;
+    const sec = Math.floor(gameTime / 60);
+    if (sec > bestTime) {
+      bestTime = sec;
+    }
+    syncProfile();
+
+    const m = String(Math.floor(sec / 60)).padStart(2, '0');
+    const s = String(sec % 60).padStart(2, '0');
+    document.getElementById('gameover-stats').innerText = `Время: ${m}:${s} | Убийств: ${player.kills}`;
+    document.getElementById('modal-gameover').classList.remove('hidden');
+  }
+
+  function closeModals() {
+    document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+  }
+
+  function updateMenuStats() {
+    const m = String(Math.floor(bestTime / 60)).padStart(2, '0');
+    const s = String(bestTime % 60).padStart(2, '0');
+    document.getElementById('menu-stats').innerText = `Рекорд: ${m}:${s} | Золото: ${gold} 🪙`;
+  }
+
+  function openMenu() {
+    isPlaying = false;
+    closeModals();
+    updateMenuStats();
+    document.getElementById('modal-menu').classList.remove('hidden');
+  }
+
+  function openStarsShop() {
+    closeModals();
+    document.getElementById('modal-stars').classList.remove('hidden');
+  }
+
+  // --- МИРОВОЙ ЛИДЕРБОРД ---
+  async function openLeaderboard() {
+    closeModals();
+    const board = document.getElementById('leader-items');
+    const statusText = document.getElementById('db-status');
+    board.innerHTML = '';
+    statusText.innerText = 'Загрузка...';
+    document.getElementById('modal-leaders').classList.remove('hidden');
+
+    try {
+      const res = await fetch(`${DB_BASE_URL}/users.json`);
+      const data = await res.json();
+      statusText.innerText = 'Топ-10 Выживших';
+
+      if (!data) {
+        board.innerHTML = '<div style="padding:10px;color:#777;">Пока нет рекордов</div>';
+        return;
+      }
+
+      const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+      list.sort((a, b) => (b.bestTime || 0) - (a.bestTime || 0));
+
+      list.slice(0, 10).forEach((item, idx) => {
+        const row = document.createElement('div');
+        const isMe = item.id === tgUser.id;
+        const timeSec = item.bestTime || 0;
+        const m = String(Math.floor(timeSec / 60)).padStart(2, '0');
+        const s = String(timeSec % 60).padStart(2, '0');
+
+        row.className = `leader-row ${isMe ? 'me' : ''}`;
+        row.innerHTML = `<span>#${idx + 1} ${item.name || 'Игрок'} ${isMe ? '(Вы)' : ''}</span><span>⏱ ${m}:${s}</span>`;
+        board.appendChild(row);
+      });
+    } catch (err) {
+      statusText.innerText = 'Ошибка подключения к базе';
+      console.error(err);
+    }
+  }
+
+  // --- TELEGRAM STARS МОНЕТИЗАЦИЯ ---
+  function buyReviveWithStars() {
+    processTelegramInvoice('revive_run', 15, () => {
+      player.hp = player.maxHp;
+      closeModals();
+      isPlaying = true;
+    });
+  }
+
+  function buyProductStars(productId, starsAmount) {
+    processTelegramInvoice(productId, starsAmount, () => {
+      if (productId === 'gold_500') gold += 500;
+      if (productId === 'gold_2000') gold += 2000;
+      if (productId === 'vip_pass') isVip = true;
+      syncProfile();
+      updateHUD();
+      alert('Покупка активирована!');
+    });
+  }
+
+  async function processTelegramInvoice(itemId, priceStars, onSuccess) {
+    const confirmed = confirm(`Подтвердить оплату ⭐ ${priceStars} Telegram Stars за "${itemId}"?`);
+    if (confirmed) {
+      onSuccess();
+    }
+  }
+
+  openMenu();
+  loop();
+</script>
+</body>
+</html>
